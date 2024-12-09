@@ -1,12 +1,13 @@
+// NetworkMonitor.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, Platform } from 'react-native';
 import NetInfo, { NetInfoState, NetInfoSubscription } from '@react-native-community/netinfo';
 import * as Notifications from 'expo-notifications';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-    shouldPlaySound: true,
+    shouldPlaySound: false,
     shouldSetBadge: false,
   }),
 });
@@ -15,11 +16,17 @@ interface NetworkDetails {
   type: string;
   isConnected: boolean;
   isInternetReachable: boolean;
-  wifiName?: string;
-  wifiStrength?: string;
-  ipAddress?: string;
-  subnet?: string;
 }
+
+const getNetworkTypeText = (type: string): string => {
+  switch (type) {
+    case 'wifi': return 'Wi-Fi';
+    case 'cellular': return '移动数据';
+    case 'none': return '无网络';
+    case 'unknown': return '未知';
+    default: return type;
+  }
+};
 
 const NetworkMonitor: React.FC = () => {
   const [networkDetails, setNetworkDetails] = useState<NetworkDetails>({
@@ -30,57 +37,76 @@ const NetworkMonitor: React.FC = () => {
 
   useEffect(() => {
     let subscription: NetInfoSubscription;
+    let lastNotificationBody: string | null = null;
 
-    const setupNotifications = async () => {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('通知权限未授予');
-        return;
+    const setupNotificationChannel = async () => {
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('network-status', {
+          name: '网络状态',
+          importance: Notifications.AndroidImportance.LOW,
+          enableVibrate: false,
+          showBadge: false,
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        });
       }
     };
 
-    const showNotification = async (title: string, body: string) => {
+    const updateNotification = async (state: NetInfoState) => {
+      const networkType = getNetworkTypeText(state.type);
+      const notificationBody = state.isConnected
+        ? `已连接到${networkType}`
+        : '网络已断开';
+
+      if (notificationBody === lastNotificationBody) {
+        return;
+      }
+
+      lastNotificationBody = notificationBody;
+
       await Notifications.scheduleNotificationAsync({
         content: {
-          title,
-          body,
+          title: '网络状态监控',
+          body: notificationBody,
+          sound: null,
+          badge: null,
+          ...(Platform.OS === 'android' && {
+            sticky: true,
+            ongoing: true,
+            priority: 'min',
+          }),
         },
         trigger: null,
       });
     };
 
-    const handleNetworkChange = (state: NetInfoState) => {
-      console.log('详细网络状态:', state);
-
+    const handleNetworkChange = async (state: NetInfoState) => {
       const details: NetworkDetails = {
         type: state.type,
         isConnected: state.isConnected || false,
         isInternetReachable: state.isInternetReachable || false,
       };
 
-      if (state.type === 'wifi' && state.details) {
-        const wifiDetails = state.details;
-        details.wifiName = wifiDetails.ssid || '未知网络';
-        details.ipAddress = wifiDetails.ipAddress || undefined;
-        details.subnet = wifiDetails.subnet || undefined;
-      }
-
       setNetworkDetails(details);
-
-      // 发送状态变化通知
-      if (state.type === 'wifi') {
-        showNotification(
-          'Wi-Fi状态变化',
-          `已${state.isConnected ? '连接' : '断开'} ${details.wifiName || ''}`
-        );
-      }
+      await updateNotification(state);
     };
 
     const init = async () => {
-      await setupNotifications();
-      const currentState = await NetInfo.fetch();
-      handleNetworkChange(currentState);
-      subscription = NetInfo.addEventListener(handleNetworkChange);
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') {
+          console.log('未获得通知权限');
+          return;
+        }
+
+        await setupNotificationChannel();
+        
+        const currentState = await NetInfo.fetch();
+        await handleNetworkChange(currentState);
+
+        subscription = NetInfo.addEventListener(handleNetworkChange);
+      } catch (error) {
+        console.error('初始化失败:', error);
+      }
     };
 
     init();
@@ -93,75 +119,98 @@ const NetworkMonitor: React.FC = () => {
   }, []);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>网络状态监控</Text>
-      
-      <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>基本信息</Text>
-        <Text style={styles.infoText}>
-          网络类型: {networkDetails.type.toUpperCase()}
-        </Text>
-        <Text style={styles.infoText}>
-          连接状态: {networkDetails.isConnected ? '已连接' : '未连接'}
-        </Text>
-        <Text style={styles.infoText}>
-          网络可用: {networkDetails.isInternetReachable ? '是' : '否'}
-        </Text>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>网络状态</Text>
       </View>
 
-      {networkDetails.type === 'wifi' && (
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Wi-Fi 详情</Text>
-          <Text style={styles.infoText}>
-            网络名称: {networkDetails.wifiName}
-          </Text>
-          {networkDetails.ipAddress && (
-            <Text style={styles.infoText}>
-              IP地址: {networkDetails.ipAddress}
-            </Text>
-          )}
-          {networkDetails.subnet && (
-            <Text style={styles.infoText}>
-              子网掩码: {networkDetails.subnet}
-            </Text>
-          )}
+      <View style={styles.section}>
+        <View style={styles.row}>
+          <Text style={styles.label}>网络类型</Text>
+          <Text style={styles.value}>{getNetworkTypeText(networkDetails.type)}</Text>
         </View>
-      )}
-    </View>
+        
+        <View style={[styles.row, styles.borderTop]}>
+          <Text style={styles.label}>连接状态</Text>
+          <Text style={[
+            styles.value,
+            networkDetails.isConnected ? styles.connected : styles.disconnected
+          ]}>
+            {networkDetails.isConnected ? '已连接' : '未连接'}
+          </Text>
+        </View>
+
+        <View style={[styles.row, styles.borderTop]}>
+          <Text style={styles.label}>网络可用</Text>
+          <Text style={[
+            styles.value,
+            networkDetails.isInternetReachable ? styles.connected : styles.disconnected
+          ]}>
+            {networkDetails.isInternetReachable ? '是' : '否'}
+          </Text>
+        </View>
+      </View>
+
+      <Text style={styles.footer}>
+        网络状态监控已启动
+      </Text>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+    backgroundColor: '#f6f6f6',
+  },
+  header: {
     padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
   },
-  title: {
-    fontSize: 24,
+  headerTitle: {
+    fontSize: 34,
     fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
+    color: '#000',
   },
-  infoCard: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 10,
+  section: {
+    marginTop: 20,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 16,
-    marginBottom: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
+    backgroundColor: '#fff',
   },
-  infoTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#333',
+  borderTop: {
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
   },
-  infoText: {
-    fontSize: 16,
-    marginBottom: 8,
+  label: {
+    fontSize: 17,
+    color: '#000',
+  },
+  value: {
+    fontSize: 17,
     color: '#666',
+  },
+  connected: {
+    color: '#34C759',
+  },
+  disconnected: {
+    color: '#FF3B30',
+  },
+  footer: {
+    padding: 16,
+    color: '#666',
+    fontSize: 13,
+    textAlign: 'center',
   },
 });
 
