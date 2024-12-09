@@ -1,17 +1,17 @@
-name: Release Android app
+# name: Release Android app
 
-on:
-  push:
-    branches: ['*']
+# on:
+#   push:
+#     branches: ['*']
 
-jobs:
-  build:
-    type: build
-    params:
-      platform: android
-      profile: production
-  submit:
-    needs: [build]
-    type: submit
-    params:
-      build_id: ${{ needs.build.outputs.build_id }}
+# jobs:
+#   build:
+#     type: build
+#     params:
+#       platform: android
+#       profile: production
+#   submit:
+#     needs: [build]
+#     type: submit
+#     params:
+#       build_id: ${{ needs.build.outputs.build_id }}
