@@ -13,16 +13,45 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "fetch"
+        ],
+        "NSNetworkingUsageDescription": "需要访问网络状态以监控网络变化"
+      },
+      "bundleIdentifier": "com.kk.networkstatusmonitor"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "icon": "./assets/play-store-icon.png",
+      "permissions": [
+        "ACCESS_NETWORK_STATE",
+        "ACCESS_WIFI_STATE",
+        "POST_NOTIFICATIONS",
+        "FOREGROUND_SERVICE"
+      ],
+      "package": "com.kk.networkstatusmonitor"
     },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
+        }
+      ]
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "4474d0c1-87b4-4567-b6a9-89e80cfacf98"
+      }
     }
   }
 }
